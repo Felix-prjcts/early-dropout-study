@@ -2,50 +2,76 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchvision.ops import StochasticDepth
 
 
 def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=False):
     """Entraîne le modèle avec early dropout : dropout p pendant les t_early premières epochs, puis 0.
+    Pareil pour stochasticDepth avec un taux fixé à la création du modèle. 
     t_early = 0 : sans dropout, t_early = epochs : dropout classique.
-    lineaire=True : le taux descend de p à 0 pendant les t_early epochs au lieu de rester constant
+    lineaire=True : le taux descend de p (ou sd_max pour sd) à 0 pendant les t_early epochs au lieu de rester constant
     """
+    print(f"Entraînement {epochs} epochs, early dropout {p} pendant {t_early} epochs, batch {batch}, lineaire={lineaire}")
+    prep = data.get("prep", lambda x: x)
     Xtr, ytr = data["Xtr"], data["ytr"]
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     rows = []
 
+    # évaluation par paquets pour ne pas saturer la RAM
+    @torch.no_grad()
+    def evaluer(X, y, bs=1000):
+        model.eval()
+        loss, correct = 0.0, 0
+        for i in range(0, len(X), bs):
+            print("debut de la boucle d'évaluation batch", i)
+            out = model(prep(X[i:i + bs]))
+            yb = y[i:i + bs]
+            loss += F.cross_entropy(out, yb, reduction="sum").item()
+            correct += (out.argmax(1) == yb).sum().item()
+        return loss / len(X), correct / len(X)
+
     for epoch in range(epochs):
-        # taux de dropout de cette epoch
+        print("debut première epoch")
+        # facteur d'intensité de cette epoch : 1 -> 0
         if epoch >= t_early:
-            rate = 0.0
+            scale = 0.0
         elif lineaire:
-            rate = p * (1 - epoch / t_early)
+            scale = 1 - epoch / t_early
         else:
-            rate = p
+            scale = 1.0
+        rate = p * scale
+
         for m in model.modules():
             if isinstance(m, nn.Dropout):
                 m.p = rate
+            elif isinstance(m, StochasticDepth):
+                m.p = m.base_p * scale
 
         # une epoch d'entraînement
         model.train()
         perm = torch.randperm(len(Xtr))
+        print("debut de la boucle d'entraînement")
         for i in range(0, len(Xtr), batch):
+            print("debut de la boucle d'entraînement batch", i)
             idx = perm[i:i + batch]
-            loss = F.cross_entropy(model(Xtr[idx]), ytr[idx])
+            xb, yb = prep(Xtr[idx]), ytr[idx]
+            loss = F.cross_entropy(model(xb), yb)
             opt.zero_grad()
             loss.backward()
             opt.step()
+        print("fin de la boucle d'entraînement")
         sched.step()
+        print("fin sched step")
 
-        # évaluation sans dropout
-        model.eval()
-        with torch.no_grad():
-            out_tr, out_va, out_te = model(Xtr), model(data["Xva"]), model(data["Xte"])
-            rows.append({
-                "epoch": epoch, "rate": rate, "p": p, "t_early": t_early, "batch": batch,
-                "train_loss": F.cross_entropy(out_tr, ytr).item(),
-                "val_loss": F.cross_entropy(out_va, data["yva"]).item(),
-                "val_acc": (out_va.argmax(1) == data["yva"]).float().mean().item(),
-                "test_acc": (out_te.argmax(1) == data["yte"]).float().mean().item(),
-            })
+        # évaluation sans dropout, par paquets
+        tr_loss, tr_acc = evaluer(Xtr, ytr)
+        print("fin évaluation train")
+        va_loss, va_acc = evaluer(data["Xva"], data["yva"])
+        row = {"epoch": epoch, "rate": rate, "scale": scale, "p": p, "t_early": t_early, "batch": batch,
+               "train_loss": tr_loss, "train_acc": tr_acc, "val_loss": va_loss, "val_acc": va_acc}
+        if "Xte" in data:
+            row["test_acc"] = evaluer(data["Xte"], data["yte"])[1]
+        rows.append(row)
+        print("première epoch fini")
 
     return pd.DataFrame(rows)
