@@ -11,7 +11,6 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
     t_early = 0 : sans dropout, t_early = epochs : dropout classique.
     lineaire=True : le taux descend de p (ou sd_max pour sd) à 0 pendant les t_early epochs au lieu de rester constant
     """
-    print(f"Entraînement {epochs} epochs, early dropout {p} pendant {t_early} epochs, batch {batch}, lineaire={lineaire}")
     prep = data.get("prep", lambda x: x)
     Xtr, ytr = data["Xtr"], data["ytr"]
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
@@ -23,7 +22,6 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
         model.eval()
         loss, correct = 0.0, 0
         for i in range(0, len(X), bs):
-            print("debut de la boucle d'évaluation batch", i)
             out = model(prep(X[i:i + bs]))
             yb = y[i:i + bs]
             loss += F.cross_entropy(out, yb, reduction="sum").item()
@@ -31,7 +29,6 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
         return loss / len(X), correct / len(X)
 
     for epoch in range(epochs):
-        print("debut première epoch")
         # facteur d'intensité de cette epoch : 1 -> 0
         if epoch >= t_early:
             scale = 0.0
@@ -50,28 +47,22 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
         # une epoch d'entraînement
         model.train()
         perm = torch.randperm(len(Xtr))
-        print("debut de la boucle d'entraînement")
         for i in range(0, len(Xtr), batch):
-            print("debut de la boucle d'entraînement batch", i)
             idx = perm[i:i + batch]
             xb, yb = prep(Xtr[idx]), ytr[idx]
             loss = F.cross_entropy(model(xb), yb)
             opt.zero_grad()
             loss.backward()
             opt.step()
-        print("fin de la boucle d'entraînement")
         sched.step()
-        print("fin sched step")
 
         # évaluation sans dropout, par paquets
         tr_loss, tr_acc = evaluer(Xtr, ytr)
-        print("fin évaluation train")
         va_loss, va_acc = evaluer(data["Xva"], data["yva"])
         row = {"epoch": epoch, "rate": rate, "scale": scale, "p": p, "t_early": t_early, "batch": batch,
                "train_loss": tr_loss, "train_acc": tr_acc, "val_loss": va_loss, "val_acc": va_acc}
         if "Xte" in data:
             row["test_acc"] = evaluer(data["Xte"], data["yte"])[1]
         rows.append(row)
-        print("première epoch fini")
 
     return pd.DataFrame(rows)
