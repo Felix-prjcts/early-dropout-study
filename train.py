@@ -64,5 +64,6 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
         if "Xte" in data:
             row["test_acc"] = evaluer(data["Xte"], data["yte"])[1]
         rows.append(row)
+        print(f"epoch {epoch:2d} | rate {rate:.3f} | train loss {tr_loss:.3f} acc {tr_acc:.3f} | val loss {va_loss:.3f} acc {va_acc:.3f}")
 
     return pd.DataFrame(rows)
