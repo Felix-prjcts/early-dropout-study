@@ -17,7 +17,20 @@ def mlp(input_shape, output_shape, couche_cache = 64):
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     return model, opt
 
-
+def cnn(in_channels, output_shape, largeur=16, n_blocs=3):
+    """CNN type VGG : n_blocs blocs [conv-relu-conv-relu-maxpool-dropout]
+    Le pooling global à la fin permet d'utiliser la même archi quelle que soit la taille des images."""
+    couches, c_in = [], in_channels
+    for k in range(n_blocs):
+        c_out = largeur * 2 ** k
+        couches += [nn.Conv2d(c_in, c_out, kernel_size=3, padding=1), nn.ReLU(),
+                    nn.Conv2d(c_out, c_out, kernel_size=3, padding=1), nn.ReLU(),
+                    nn.MaxPool2d(2), nn.Dropout(0.0)]
+        c_in = c_out
+    couches += [nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Linear(c_in, output_shape)]
+    model = nn.Sequential(*couches)
+    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    return model, opt
 
 class BlocRes(nn.Module):
     """Bloc résiduel : x + F(x). Le stochastic depth saute la branche F(x), jamais le raccourci."""
@@ -62,5 +75,3 @@ def resnet(output_shape=200, widths=(32, 64, 128, 256), blocs=(1, 1, 1, 1), sd_m
     )
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     return model, opt
-
-        
