@@ -5,7 +5,7 @@ from torch import nn
 from torchvision.ops import StochasticDepth
 
 
-def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=False):
+def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=False, n_eval=10000):
     """Entraîne le modèle avec early dropout : dropout p pendant les t_early premières epochs, puis 0.
     Pareil pour stochasticDepth avec un taux fixé à la création du modèle. 
     t_early = 0 : sans dropout, t_early = epochs : dropout classique.
@@ -15,6 +15,11 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
     Xtr, ytr = data["Xtr"], data["ytr"]
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     rows = []
+
+    # Pour calculer la loss/accuracy sur un sous-ensemble de l'entraînement, plus rapide.
+    g = torch.Generator().manual_seed(1234)
+    sub = torch.randperm(len(Xtr), generator=g)[:min(n_eval, len(Xtr))].to(Xtr.device)
+    Xsub, ysub = Xtr[sub], ytr[sub]
 
     # évaluation par paquets pour ne pas saturer la RAM
     @torch.no_grad()
@@ -47,7 +52,7 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
 
         # une epoch d'entraînement
         model.train()
-        perm = torch.randperm(len(Xtr))
+        perm = torch.randperm(len(Xtr), device=Xtr.device)
         for i in range(0, len(Xtr), batch):
             idx = perm[i:i + batch]
             xb, yb = prep(Xtr[idx]), ytr[idx]
@@ -58,12 +63,13 @@ def entrainer(model, opt, data, epochs, t_early, p=0.1, batch=128, lineaire=Fals
         sched.step()
 
         # évaluation sans dropout, par paquets
-        tr_loss, tr_acc = evaluer(Xtr, ytr)
+        tr_loss, tr_acc = evaluer(Xsub, ysub)
         va_loss, va_acc = evaluer(data["Xva"], data["yva"])
         row = {"epoch": epoch, "rate": rate, "scale": scale, "p": p, "t_early": t_early, "batch": batch,
                "train_loss": tr_loss, "train_acc": tr_acc, "val_loss": va_loss, "val_acc": va_acc}
         if "Xte" in data:
             row["test_acc"] = evaluer(data["Xte"], data["yte"])[1]
         rows.append(row)
-        
+
+    print()
     return pd.DataFrame(rows)
