@@ -10,7 +10,7 @@ Nous on veut voir si ça tient sur des modèles du cours (MLP, CNN, ResNet sur F
 - Schedule : cosinus jusqu'à 0 sur tout l'entraînement. Pas de ReduceLROnPlateau parce que sinon le lr change pas au même moment selon qu'il y a du dropout ou pas, et on saurait plus ce qui joue
 - Batch : 128
 - Dropout : p = 0.1 (proba de couper un neurone), mis après chaque couche cachée
-- Early dropout : dropout à 0.1 (a changer éventuellement) pendant les T premières epochs, puis 0. T est une fraction du nb d'epochs : `EARLY_GRID = [0, 0.1, 0.2, 0.3, 0.5, 1]`, avec 0 = pas de dropout et 1 = dropout classique tout le long
+- Early dropout : dropout à 0.1 (a changer éventuellement) pendant les T premières epochs, puis 0. T est une fraction du nb d'epochs : `EARLY_GRID = [0, 0.05, 0.1, 0.2, 0.3, 0.5, 1]`, avec 0 = pas de dropout et 1 = dropout classique tout le long
 - Données : on garde 10 000 images du train pour la validation (split fixe, seed 0), normalisation calculée sur le train seulement
 - Seeds : 3 (5 dans la version fashionmnist mais ca risque d'etre trop). Pour une même seed on a la même init des poids, donc on compare early vs sans dropout seed par seed
 - Ce qu'on mesure à chaque epoch, en mode eval (sans dropout) : loss train, loss val, accuracy val, accuracy test
