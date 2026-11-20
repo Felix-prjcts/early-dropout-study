@@ -1,0 +1,1 @@
+test de position p=0.1 et MLP e20 frac0.05 refaits sur GPU
